@@ -7,6 +7,7 @@ import { recordChannelActivity } from "../../infra/channel-activity.js";
 import { getChildLogger } from "../../logging/logger.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { saveMediaBuffer } from "../../media/store.js";
+import { getGlobalHookRunner } from "../../plugins/hook-runner-global.js";
 import { jidToE164, resolveJidToE164 } from "../../utils.js";
 import { createWaSocket, getStatusCode, waitForWaConnection } from "../session.js";
 import { checkInboundAccessControl } from "./access-control.js";
@@ -204,6 +205,56 @@ export async function monitorWebInbox(options: {
     const messageTimestampMs = msg.messageTimestamp
       ? Number(msg.messageTimestamp) * 1000
       : undefined;
+
+    const location = extractLocationData(msg.message ?? undefined);
+    const locationText = location ? formatLocationText(location) : undefined;
+    let body = extractText(msg.message ?? undefined);
+    if (locationText) {
+      body = [body, locationText].filter(Boolean).join("\n").trim();
+    }
+    if (!body) {
+      body = extractMediaPlaceholder(msg.message ?? undefined);
+    }
+    const senderName = msg.pushName ?? undefined;
+
+    // Fire message_inbound hook before access control so plugins (e.g.
+    // whatsapp-store) observe every raw inbound message from any sender.
+    if (body) {
+      const hookRunner = getGlobalHookRunner();
+      if (hookRunner?.hasHooks("message_inbound")) {
+        const conversationId = group ? remoteJid : from;
+        void hookRunner
+          .runMessageInbound(
+            {
+              from: participantJid ?? senderE164 ?? from,
+              content: body,
+              timestamp: messageTimestampMs,
+              metadata: {
+                to: selfE164 ?? "me",
+                provider: "whatsapp",
+                surface: "whatsapp",
+                originatingChannel: "whatsapp",
+                originatingTo: conversationId,
+                messageId: id,
+                senderId: participantJid,
+                senderName,
+                senderE164: senderE164 ?? undefined,
+                chatType: group ? "group" : "direct",
+                groupName: groupSubject,
+                fromMe: Boolean(msg.key?.fromMe),
+              },
+            },
+            {
+              channelId: "whatsapp",
+              accountId: options.accountId,
+              conversationId,
+            },
+          )
+          .catch((err: unknown) => {
+            logVerbose(`inbound/monitor: message_inbound plugin hook failed: ${String(err)}`);
+          });
+      }
+    }
 
     const access = await checkInboundAccessControl({
       accountId: options.accountId,

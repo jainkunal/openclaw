@@ -1290,6 +1290,17 @@ export async function runEmbeddedAttempt(
         sessionAgentId,
       );
 
+      const baseStreamFn = activeSession.agent.streamFn;
+      activeSession.agent.streamFn = (model, context, options) => {
+        return baseStreamFn(model, context, {
+          ...options,
+          headers: {
+            ...(options as { headers?: Record<string, string> })?.headers,
+            "x-session-id": params.sessionId,
+          },
+        });
+      };
+
       if (cacheTrace) {
         cacheTrace.recordStage("session:loaded", {
           messages: activeSession.messages,

@@ -8,6 +8,9 @@
 import { concatOptionalTextSegments } from "../shared/text/join-segments.js";
 import type { PluginRegistry } from "./registry.js";
 import type {
+  PluginHookInboundClaimContext,
+  PluginHookInboundClaimEvent,
+  PluginHookInboundClaimResult,
   PluginHookAfterCompactionEvent,
   PluginHookAfterToolCallEvent,
   PluginHookAgentContext,
@@ -53,6 +56,13 @@ import type {
 } from "./types.js";
 
 // Re-export types for consumers
+export type PluginTargetedInboundClaimOutcome =
+  | { status: "handled"; result: PluginHookInboundClaimResult }
+  | { status: "missing_plugin" }
+  | { status: "no_handler" }
+  | { status: "declined" }
+  | { status: "error"; error: string };
+
 export type {
   PluginHookAgentContext,
   PluginHookBeforeAgentStartEvent,
@@ -383,6 +393,61 @@ export function createHookRunner(registry: PluginRegistry, options: HookRunnerOp
   // =========================================================================
   // Message Hooks
   // =========================================================================
+
+  /**
+   * Run inbound_claim hook.
+   * Allows plugins to claim an inbound event before commands/agent dispatch.
+   */
+  async function runInboundClaim(
+    event: PluginHookInboundClaimEvent,
+    ctx: PluginHookInboundClaimContext,
+  ): Promise<PluginHookInboundClaimResult | undefined> {
+    return runClaimingHook<"inbound_claim", PluginHookInboundClaimResult>(
+      "inbound_claim",
+      event,
+      ctx,
+    );
+  }
+
+  async function runInboundClaimForPlugin(
+    pluginId: string,
+    event: PluginHookInboundClaimEvent,
+    ctx: PluginHookInboundClaimContext,
+  ): Promise<PluginHookInboundClaimResult | undefined> {
+    return runClaimingHookForPlugin<"inbound_claim", PluginHookInboundClaimResult>(
+      "inbound_claim",
+      pluginId,
+      event,
+      ctx,
+    );
+  }
+
+  async function runInboundClaimForPluginOutcome(
+    pluginId: string,
+    event: PluginHookInboundClaimEvent,
+    ctx: PluginHookInboundClaimContext,
+  ): Promise<PluginTargetedInboundClaimOutcome> {
+    return runClaimingHookForPluginOutcome<"inbound_claim", PluginHookInboundClaimResult>(
+      "inbound_claim",
+      pluginId,
+      event,
+      ctx,
+    );
+  }
+
+  /**
+   * Run message_inbound hook.
+   * Fires after sender authorization but before mention gating,
+   * so plugins can observe all authorized inbound messages regardless
+   * of whether the agent will process them.
+   * Runs in parallel (fire-and-forget).
+   */
+  async function runMessageInbound(
+    event: PluginHookMessageReceivedEvent,
+    ctx: PluginHookMessageContext,
+  ): Promise<void> {
+    return runVoidHook("message_inbound", event, ctx);
+  }
 
   /**
    * Run message_received hook.
@@ -734,6 +799,10 @@ export function createHookRunner(registry: PluginRegistry, options: HookRunnerOp
     runAfterCompaction,
     runBeforeReset,
     // Message hooks
+    runInboundClaim,
+    runInboundClaimForPlugin,
+    runInboundClaimForPluginOutcome,
+    runMessageInbound,
     runMessageReceived,
     runMessageSending,
     runMessageSent,
