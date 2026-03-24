@@ -65,6 +65,7 @@ export type PluginHookName =
   | "after_compaction"
   | "before_reset"
   | "inbound_claim"
+  | "message_inbound"
   | "message_received"
   | "message_sending"
   | "message_sent"
@@ -96,6 +97,7 @@ export const PLUGIN_HOOK_NAMES = [
   "after_compaction",
   "before_reset",
   "inbound_claim",
+  "message_inbound",
   "message_received",
   "message_sending",
   "message_sent",
@@ -688,6 +690,10 @@ export type PluginHookHandlerMap = {
     event: PluginHookReplyDispatchEvent,
     ctx: PluginHookReplyDispatchContext,
   ) => Promise<PluginHookReplyDispatchResult | void> | PluginHookReplyDispatchResult | void;
+  message_inbound: (
+    event: PluginHookMessageReceivedEvent,
+    ctx: PluginHookMessageContext,
+  ) => Promise<void> | void;
   message_received: (
     event: PluginHookMessageReceivedEvent,
     ctx: PluginHookMessageContext,

@@ -1,0 +1,94 @@
+steps:
+  # --- STEP 1: PREPARATION (Git & Auth) ---
+  - name: "gcr.io/google.com/cloudsdktool/cloud-sdk:alpine"
+    entrypoint: "bash"
+    secretEnv: ["GITHUB_TOKEN"]
+    args:
+      - "-c"
+      - |
+        set -e
+        echo "--- 1. Configure Git Identity ---"
+        git config --global user.email "bot@cloudbuild.gserviceaccount.com"
+        git config --global user.name "Cloud Build Bot"
+
+        echo "--- 2. Unshallow & Rebase ---"
+        if [ -f .git/shallow ]; then
+          git fetch --unshallow --all || git fetch --all
+        else
+          git fetch --all
+        fi
+
+        # Force checkout to fix "pathspec" error
+        git checkout -B ${_MY_BRANCH}
+
+        git remote add upstream https://github.com/openclaw/openclaw.git
+        git fetch upstream --tags
+
+        LATEST_TAG=$$(git tag --list "v*" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$$' | sort -V | tail -n 1)
+        echo "Latest release tag: $$LATEST_TAG"
+
+        if git rebase tags/$$LATEST_TAG; then
+          echo "Rebase onto $$LATEST_TAG successful."
+          git remote set-url origin "https://$$GITHUB_TOKEN@github.com/jainkunal/openclaw.git"
+          git push origin ${_MY_BRANCH} -f
+        else
+          echo "CRITICAL: Rebase onto $$LATEST_TAG failed. Conflicting files:"
+          git diff --name-only --diff-filter=U
+          git rebase --abort
+          exit 1
+        fi
+
+        echo "--- 3. Generate Version & Auth Token ---"
+        SHORT_SHA=$(git rev-parse --short HEAD)
+
+        # Write SHORT_SHA for later use
+        echo "$$SHORT_SHA" > /workspace/sha.txt
+
+        # Generate Google Token
+        gcloud auth print-access-token > /workspace/gcp_token.txt
+
+        echo "Prepared for publish"
+
+  # --- STEP 2: BUILD & PUBLISH (Node 23) ---
+  - name: "node:23"
+    entrypoint: "bash"
+    args:
+      - "-c"
+      - |
+        set -e
+        echo "--- Installing Dependencies ---"
+        npm install -g pnpm rolldown@1.0.0-rc.3
+        pnpm install
+
+        echo "--- Patching package.json ---"
+        SHORT_SHA=$(cat /workspace/sha.txt)
+        node -p "require('./package.json').version + '-' + '$${SHORT_SHA}'" > /workspace/version.txt
+
+        node -e "
+          const fs = require('fs');
+          const pkg = require('./package.json');
+          const newVersion = fs.readFileSync('/workspace/version.txt', 'utf8').trim();
+          const name = '${_PKG_NAME}';
+          console.log('Patching package.json -> ' + name + ' @ ' + newVersion);
+          pkg.name = name;
+          pkg.version = newVersion;
+          fs.writeFileSync('./package.json', JSON.stringify(pkg, null, 2));
+        "
+
+        echo "--- Configuring npm authentication ---"
+        npm config set //${_LOCATION}-npm.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/:_authToken="$(cat /workspace/gcp_token.txt)"
+
+        echo "--- Publishing to Artifact Registry ---"
+        npm publish --registry https://${_LOCATION}-npm.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/
+
+substitutions:
+  _MY_BRANCH: "feat/message-inbound"
+  _NPM_TOKEN: "" # Placeholder - will be set from gcp_token.txt in the build step
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+availableSecrets:
+  secretManager:
+    - versionName: projects/850691095288/secrets/OPENCLAW_GAT/versions/latest
+      env: "GITHUB_TOKEN"
