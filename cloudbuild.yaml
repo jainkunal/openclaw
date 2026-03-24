@@ -75,11 +75,14 @@ steps:
           fs.writeFileSync('./package.json', JSON.stringify(pkg, null, 2));
         "
 
+        echo "--- Building ---"
+        pnpm build && pnpm ui:build
+
         echo "--- Configuring npm authentication ---"
         npm config set //${_LOCATION}-npm.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/:_authToken="$(cat /workspace/gcp_token.txt)"
 
         echo "--- Publishing to Artifact Registry ---"
-        npm publish --registry https://${_LOCATION}-npm.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/
+        npm publish --ignore-scripts --registry https://${_LOCATION}-npm.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/
 
 substitutions:
   _MY_BRANCH: "feat/message-inbound"
