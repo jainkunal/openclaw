@@ -9,6 +9,7 @@ import { renderQrPngBase64 } from "./qr-image.js";
 import {
   createWaSocket,
   formatError,
+  flushWaCreds,
   getStatusCode,
   logoutWeb,
   readWebSelfId,
@@ -33,13 +34,17 @@ type ActiveLogin = {
   waitPromise: Promise<void>;
   restartAttempted: boolean;
   verbose: boolean;
+  finalized?: boolean;
 };
 
 const ACTIVE_LOGIN_TTL_MS = 3 * 60_000;
 const activeLogins = new Map<string, ActiveLogin>();
 
-function closeSocket(sock: WaSocket) {
+async function closeSocket(sock: WaSocket) {
   try {
+    // Give any pending creds.update events a chance to flush before closing.
+    await flushWaCreds();
+    await new Promise((r) => setTimeout(r, 500));
     sock.ws?.close();
   } catch {
     // ignore
@@ -49,7 +54,7 @@ function closeSocket(sock: WaSocket) {
 async function resetActiveLogin(accountId: string, reason?: string) {
   const login = activeLogins.get(accountId);
   if (login) {
-    closeSocket(login.sock);
+    await closeSocket(login.sock);
     activeLogins.delete(accountId);
   }
   if (reason) {
@@ -87,7 +92,7 @@ async function restartLoginSocket(login: ActiveLogin, runtime: RuntimeEnv) {
   runtime.log(
     info("WhatsApp asked for a restart after pairing (code 515); retrying connection once…"),
   );
-  closeSocket(login.sock);
+  await closeSocket(login.sock);
   try {
     const sock = await createWaSocket(false, login.verbose, {
       authDir: login.authDir,

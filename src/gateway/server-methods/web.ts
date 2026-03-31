@@ -108,6 +108,10 @@ export const webHandlers: GatewayRequestHandlers = {
         accountId,
       });
       if (result.connected) {
+        // WhatsApp handoff: Give the login socket a chance to finish flushing and close
+        // before we fire up the main monitor. This prevents "session conflict" or
+        // corrupted credentials errors during the handoff.
+        await new Promise((r) => setTimeout(r, 1000));
         await context.startChannel(provider.id, accountId);
       }
       respond(true, result, undefined);

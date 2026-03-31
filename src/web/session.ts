@@ -32,6 +32,14 @@ export {
 } from "./auth-store.js";
 
 let credsSaveQueue: Promise<void> = Promise.resolve();
+
+/**
+ * Wait for any pending credential saves to complete.
+ */
+export async function flushWaCreds(): Promise<void> {
+  await credsSaveQueue;
+}
+
 function enqueueSaveCreds(
   authDir: string,
   saveCreds: () => Promise<void> | void,
