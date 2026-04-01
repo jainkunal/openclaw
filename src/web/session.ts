@@ -121,9 +121,9 @@ export async function createWaSocket(
     version,
     logger,
     printQRInTerminal: false,
-    browser: ["openclaw", "cli", VERSION],
+    browser: ["openclaw", "Chrome", VERSION],
     syncFullHistory: false,
-    markOnlineOnConnect: false,
+    markOnlineOnConnect: true,
   });
 
   sock.ev.on("creds.update", () => enqueueSaveCreds(authDir, saveCreds, sessionLogger));
@@ -168,26 +168,77 @@ export async function createWaSocket(
   return sock;
 }
 
-export async function waitForWaConnection(sock: ReturnType<typeof makeWASocket>) {
+export async function waitForWaConnection(
+  sock: ReturnType<typeof makeWASocket>,
+  opts: { waitForIdentity?: boolean } = {},
+) {
   return new Promise<void>((resolve, reject) => {
     type OffCapable = {
       off?: (event: string, listener: (...args: unknown[]) => void) => void;
     };
     const evWithOff = sock.ev as unknown as OffCapable;
+    let opened = false;
+    let identityTimer: ReturnType<typeof setTimeout> | null = null;
 
-    const handler = (...args: unknown[]) => {
-      const update = (args[0] ?? {}) as Partial<import("@whiskeysockets/baileys").ConnectionState>;
-      if (update.connection === "open") {
-        evWithOff.off?.("connection.update", handler);
+    function cleanup() {
+      evWithOff.off?.("connection.update", connHandler);
+      evWithOff.off?.("creds.update", credsHandler);
+      if (identityTimer !== null) {
+        clearTimeout(identityTimer);
+        identityTimer = null;
+      }
+    }
+
+    function tryResolveIdentity() {
+      if (sock.authState?.creds?.me?.id) {
+        cleanup();
         resolve();
       }
+    }
+
+    const connHandler = (...args: unknown[]) => {
+      const update = (args[0] ?? {}) as Partial<import("@whiskeysockets/baileys").ConnectionState>;
+      if (update.connection === "open") {
+        if (!opts.waitForIdentity) {
+          cleanup();
+          resolve();
+          return;
+        }
+        // In waitForIdentity mode, keep listening until me.id appears in creds.
+        // If me.id is already set (e.g. reconnecting with existing credentials),
+        // resolve immediately.
+        if (sock.authState?.creds?.me?.id) {
+          cleanup();
+          resolve();
+          return;
+        }
+        opened = true;
+        // Safety fallback: resolve after 5 s even if me.id never appears,
+        // so we don't hang if the handshake never sends it.
+        identityTimer = setTimeout(() => {
+          cleanup();
+          resolve();
+        }, 5000);
+      }
       if (update.connection === "close") {
-        evWithOff.off?.("connection.update", handler);
-        reject(update.lastDisconnect ?? new Error("Connection closed"));
+        cleanup();
+        // Reject with lastDisconnect.error (the actual Boom/Error) so that
+        // getStatusCode() can read .output.statusCode (e.g. 515). Passing the
+        // raw lastDisconnect object hides the statusCode one level too deep.
+        reject(update.lastDisconnect?.error ?? new Error("Connection closed"));
       }
     };
 
-    sock.ev.on("connection.update", handler);
+    const credsHandler = () => {
+      if (opened) {
+        tryResolveIdentity();
+      }
+    };
+
+    sock.ev.on("connection.update", connHandler);
+    if (opts.waitForIdentity) {
+      sock.ev.on("creds.update", credsHandler);
+    }
   });
 }
 

@@ -44,7 +44,7 @@ async function closeSocket(sock: WaSocket) {
   try {
     // Give any pending creds.update events a chance to flush before closing.
     await flushWaCreds();
-    await new Promise((r) => setTimeout(r, 500));
+    await new Promise((r) => setTimeout(r, 2000));
     sock.ws?.close();
   } catch {
     // ignore
@@ -67,21 +67,28 @@ function isLoginFresh(login: ActiveLogin) {
 }
 
 function attachLoginWaiter(accountId: string, login: ActiveLogin) {
-  login.waitPromise = waitForWaConnection(login.sock)
-    .then(() => {
+  login.waitPromise = (async () => {
+    try {
+      // Wait until "open" AND me.id is set in credentials — this confirms the
+      // full identity handshake is complete before we consider the link done.
+      await waitForWaConnection(login.sock, { waitForIdentity: true });
+
+      // Give it a moment to stabilize before we declare "connected"
+      await new Promise((r) => setTimeout(r, 1000));
+
       const current = activeLogins.get(accountId);
       if (current?.id === login.id) {
         current.connected = true;
       }
-    })
-    .catch((err) => {
+    } catch (err) {
       const current = activeLogins.get(accountId);
       if (current?.id !== login.id) {
         return;
       }
       current.error = formatError(err);
       current.errorStatus = getStatusCode(err);
-    });
+    }
+  })();
 }
 
 async function restartLoginSocket(login: ActiveLogin, runtime: RuntimeEnv) {

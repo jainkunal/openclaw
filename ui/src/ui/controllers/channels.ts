@@ -31,6 +31,7 @@ export async function startWhatsAppLogin(state: ChannelsState, force: boolean) {
     return;
   }
   state.whatsappBusy = true;
+  let autoWait = false;
   try {
     const res = await state.client.request<{ message?: string; qrDataUrl?: string }>(
       "web.login.start",
@@ -42,12 +43,19 @@ export async function startWhatsAppLogin(state: ChannelsState, force: boolean) {
     state.whatsappLoginMessage = res.message ?? null;
     state.whatsappLoginQrDataUrl = res.qrDataUrl ?? null;
     state.whatsappLoginConnected = null;
+    autoWait = !!res.qrDataUrl;
   } catch (err) {
     state.whatsappLoginMessage = String(err);
     state.whatsappLoginQrDataUrl = null;
     state.whatsappLoginConnected = null;
   } finally {
     state.whatsappBusy = false;
+  }
+  // Auto-start the wait immediately after QR is displayed so the 515 reconnect
+  // (WhatsApp requires a reconnect after initial pairing) is handled without
+  // requiring the user to manually click "Wait for scan".
+  if (autoWait) {
+    void waitWhatsAppLogin(state);
   }
 }
 
