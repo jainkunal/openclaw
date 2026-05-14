@@ -425,7 +425,7 @@ export async function attachWebInboxToSocket(
               content: body,
               timestamp: messageTimestampMs,
               metadata: {
-                to: selfE164 ?? "me",
+                to: self.e164 ?? "me",
                 provider: "whatsapp",
                 surface: "whatsapp",
                 originatingChannel: "whatsapp",
