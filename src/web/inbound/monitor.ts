@@ -185,7 +185,14 @@ export async function monitorWebInbox(options: {
       }
     }
     const participantJid = msg.key?.participant ?? undefined;
-    const from = group ? remoteJid : await resolveInboundJid(remoteJid);
+    let from = group ? remoteJid : await resolveInboundJid(remoteJid);
+    // WhatsApp LID migration: self-chat (Saved Messages) remoteJid may now arrive as
+    // <lid>@lid instead of <phone>@s.whatsapp.net. Own LID isn't reliably in the local
+    // reverse-map, so resolveInboundJid returns null and the message_inbound hook never
+    // fires. Fall back to selfE164/selfJid so plugins can still observe self-chat.
+    if (!from && !group && msg.key?.fromMe) {
+      from = selfE164 ?? selfJid ?? null;
+    }
     if (!from) {
       return null;
     }
