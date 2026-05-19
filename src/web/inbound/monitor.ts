@@ -35,6 +35,8 @@ export async function monitorWebInbox(options: {
   debounceMs?: number;
   /** Optional debounce gating predicate. */
   shouldDebounce?: (msg: WebInboundMessage) => boolean;
+  /** Skip 'available' presence updates (default false). */
+  selfChatMode?: boolean;
 }) {
   const inboundLogger = getChildLogger({ module: "web-inbound" });
   const inboundConsoleLog = createSubsystemLogger("gateway/channels/whatsapp").child("inbound");
@@ -58,12 +60,15 @@ export async function monitorWebInbox(options: {
   };
 
   try {
-    await sock.sendPresenceUpdate("available");
+    const presence = options.selfChatMode ? "unavailable" : "available";
+    await sock.sendPresenceUpdate(presence);
     if (shouldLogVerbose()) {
-      logVerbose("Sent global 'available' presence on connect");
+      logVerbose(
+        `Sent global '${presence}' presence on connect${options.selfChatMode ? " (self-chat mode)" : ""}`,
+      );
     }
   } catch (err) {
-    logVerbose(`Failed to send 'available' presence on connect: ${String(err)}`);
+    logVerbose(`Failed to send presence on connect: ${String(err)}`);
   }
 
   const selfJid = sock.user?.id;
