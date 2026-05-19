@@ -123,7 +123,7 @@ export async function createWaSocket(
     printQRInTerminal: false,
     browser: ["openclaw", "Chrome", VERSION],
     syncFullHistory: false,
-    markOnlineOnConnect: true,
+    markOnlineOnConnect: false,
   });
 
   sock.ev.on("creds.update", () => enqueueSaveCreds(authDir, saveCreds, sessionLogger));
