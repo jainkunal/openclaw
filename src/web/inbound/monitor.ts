@@ -229,6 +229,21 @@ export async function monitorWebInbox(options: {
     }
     const senderName = msg.pushName ?? undefined;
 
+    // Resolve @-mentions to E.164 so plugins can map a mentioned JID/LID → phone
+    // without their own LID mapping (only core holds it). Groups only.
+    let resolvedMentions: Array<{ jid: string; e164: string }> | undefined;
+    const rawMentionedJids = group ? extractMentionedJids(msg.message ?? undefined) : undefined;
+    if (rawMentionedJids && rawMentionedJids.length > 0) {
+      const pairs = await Promise.all(
+        rawMentionedJids.map(async (jid) => {
+          const e164 = await resolveInboundJid(jid);
+          return e164 ? { jid, e164 } : null;
+        }),
+      );
+      const filtered = pairs.filter((p): p is { jid: string; e164: string } => p !== null);
+      resolvedMentions = filtered.length > 0 ? filtered : undefined;
+    }
+
     // Fire message_inbound hook before access control so plugins (e.g.
     // whatsapp-store) observe every raw inbound message from any sender.
     if (body) {
@@ -253,6 +268,9 @@ export async function monitorWebInbox(options: {
                 senderE164: senderE164 ?? undefined,
                 chatType: group ? "group" : "direct",
                 groupName: groupSubject,
+                mentionedJids: rawMentionedJids,
+                mentions: resolvedMentions,
+                groupParticipants,
                 fromMe: Boolean(msg.key?.fromMe),
               },
             },

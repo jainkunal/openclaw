@@ -581,6 +581,12 @@ export type PluginHookMessageReceivedEvent = {
     senderName?: string;
     senderUsername?: string;
     senderE164?: string;
+    /** Raw @-mentioned JIDs (groups only). */
+    mentionedJids?: string[];
+    /** @-mentioned users resolved to E.164 by core (groups only). */
+    mentions?: Array<{ jid: string; e164: string }>;
+    /** Group participant roster resolved to E.164 by core. */
+    groupParticipants?: string[];
     guildId?: string;
     channelName?: string;
     groupName?: string;
