@@ -587,6 +587,8 @@ export type PluginHookMessageReceivedEvent = {
     mentions?: Array<{ jid: string; e164: string }>;
     /** Group participant roster resolved to E.164 by core. */
     groupParticipants?: string[];
+    /** LID → E.164 map for all group participants (groups only). Keyed by full JID string (e.g. "182235546275903@lid"). */
+    groupParticipantE164Map?: Record<string, string>;
     guildId?: string;
     channelName?: string;
     groupName?: string;

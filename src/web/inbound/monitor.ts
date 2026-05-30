@@ -293,6 +293,10 @@ export async function monitorWebInbox(options: {
                 mentionedJids: rawMentionedJids,
                 mentions: resolvedMentions,
                 groupParticipants,
+                groupParticipantE164Map:
+                  groupLidE164Map && groupLidE164Map.size > 0
+                    ? Object.fromEntries(groupLidE164Map)
+                    : undefined,
                 fromMe: Boolean(msg.key?.fromMe),
               },
             },
