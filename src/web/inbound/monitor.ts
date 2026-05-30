@@ -120,7 +120,7 @@ export async function monitorWebInbox(options: {
   });
   const groupMetaCache = new Map<
     string,
-    { subject?: string; participants?: string[]; expires: number }
+    { subject?: string; participants?: string[]; lidE164Map?: Map<string, string>; expires: number }
   >();
   const GROUP_META_TTL_MS = 5 * 60 * 1000; // 5 minutes
   const lidLookup = sock.signalRepository?.lidMapping;
@@ -135,11 +135,28 @@ export async function monitorWebInbox(options: {
     }
     try {
       const meta = await sock.groupMetadata(jid);
+      // Build a LID→e164 map from the phoneNumber field Baileys populates for
+      // LID-addressed groups (groups.js line ~318). This is the only reliable
+      // source for contacts who haven't DM'd the bot before — the signal-store
+      // LID reverse mapping only exists for participants that have exchanged
+      // encrypted messages with us.
+      const lidE164Map = new Map<string, string>();
+      for (const p of meta.participants ?? []) {
+        if (p.phoneNumber) {
+          const e164 = jidToE164(p.phoneNumber);
+          if (e164) {
+            lidE164Map.set(p.id, e164);
+            if (p.lid) {
+              lidE164Map.set(p.lid, e164);
+            }
+          }
+        }
+      }
       const participants =
         (
           await Promise.all(
             meta.participants?.map(async (p) => {
-              const mapped = await resolveInboundJid(p.id);
+              const mapped = (await resolveInboundJid(p.id)) ?? lidE164Map.get(p.id) ?? null;
               return mapped ?? p.id;
             }) ?? [],
           )
@@ -147,6 +164,7 @@ export async function monitorWebInbox(options: {
       const entry = {
         subject: meta.subject,
         participants,
+        lidE164Map,
         expires: Date.now() + GROUP_META_TTL_MS,
       };
       groupMetaCache.set(jid, entry);
@@ -201,19 +219,23 @@ export async function monitorWebInbox(options: {
     if (!from) {
       return null;
     }
-    const senderE164 = group
-      ? participantJid
-        ? await resolveInboundJid(participantJid)
-        : null
-      : from;
-
     let groupSubject: string | undefined;
     let groupParticipants: string[] | undefined;
+    let groupLidE164Map: Map<string, string> | undefined;
     if (group) {
       const meta = await getGroupMeta(remoteJid);
       groupSubject = meta.subject;
       groupParticipants = meta.participants;
+      groupLidE164Map = meta.lidE164Map;
     }
+
+    const senderE164 = group
+      ? participantJid
+        ? ((await resolveInboundJid(participantJid)) ??
+          groupLidE164Map?.get(participantJid) ??
+          null)
+        : null
+      : from;
     const messageTimestampMs = msg.messageTimestamp
       ? Number(msg.messageTimestamp) * 1000
       : undefined;
@@ -236,7 +258,7 @@ export async function monitorWebInbox(options: {
     if (rawMentionedJids && rawMentionedJids.length > 0) {
       const pairs = await Promise.all(
         rawMentionedJids.map(async (jid) => {
-          const e164 = await resolveInboundJid(jid);
+          const e164 = (await resolveInboundJid(jid)) ?? groupLidE164Map?.get(jid) ?? null;
           return e164 ? { jid, e164 } : null;
         }),
       );
