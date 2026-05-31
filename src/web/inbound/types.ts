@@ -27,7 +27,7 @@ export type WebInboundMessage = {
   replyToSenderJid?: string;
   replyToSenderE164?: string;
   groupSubject?: string;
-  groupParticipants?: string[];
+  groupParticipants?: Array<{ jid: string; e164?: string; name?: string }>;
   mentionedJids?: string[];
   selfJid?: string | null;
   selfE164?: string | null;

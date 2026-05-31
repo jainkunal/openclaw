@@ -118,9 +118,15 @@ export async function monitorWebInbox(options: {
       inboundConsoleLog.error(`Failed handling inbound web message: ${String(err)}`);
     },
   });
+  type GroupParticipantEntry = { jid: string; e164?: string; name?: string };
   const groupMetaCache = new Map<
     string,
-    { subject?: string; participants?: string[]; lidE164Map?: Map<string, string>; expires: number }
+    {
+      subject?: string;
+      participants?: GroupParticipantEntry[];
+      lidE164Map?: Map<string, string>;
+      expires: number;
+    }
   >();
   const GROUP_META_TTL_MS = 5 * 60 * 1000; // 5 minutes
   const lidLookup = sock.signalRepository?.lidMapping;
@@ -152,15 +158,13 @@ export async function monitorWebInbox(options: {
           }
         }
       }
-      const participants =
-        (
-          await Promise.all(
-            meta.participants?.map(async (p) => {
-              const mapped = (await resolveInboundJid(p.id)) ?? lidE164Map.get(p.id) ?? null;
-              return mapped ?? p.id;
-            }) ?? [],
-          )
-        ).filter(Boolean) ?? [];
+      const participants: GroupParticipantEntry[] = await Promise.all(
+        meta.participants?.map(async (p) => {
+          const e164 = (await resolveInboundJid(p.id)) ?? lidE164Map.get(p.id) ?? undefined;
+          const name = p.notify ?? p.name ?? undefined;
+          return { jid: p.id, e164, name };
+        }) ?? [],
+      );
       const entry = {
         subject: meta.subject,
         participants,
@@ -183,7 +187,7 @@ export async function monitorWebInbox(options: {
     from: string;
     senderE164: string | null;
     groupSubject?: string;
-    groupParticipants?: string[];
+    groupParticipants?: GroupParticipantEntry[];
     messageTimestampMs?: number;
     access: Awaited<ReturnType<typeof checkInboundAccessControl>>;
   };
@@ -220,7 +224,7 @@ export async function monitorWebInbox(options: {
       return null;
     }
     let groupSubject: string | undefined;
-    let groupParticipants: string[] | undefined;
+    let groupParticipants: GroupParticipantEntry[] | undefined;
     let groupLidE164Map: Map<string, string> | undefined;
     if (group) {
       const meta = await getGroupMeta(remoteJid);
@@ -293,10 +297,6 @@ export async function monitorWebInbox(options: {
                 mentionedJids: rawMentionedJids,
                 mentions: resolvedMentions,
                 groupParticipants,
-                groupParticipantE164Map:
-                  groupLidE164Map && groupLidE164Map.size > 0
-                    ? Object.fromEntries(groupLidE164Map)
-                    : undefined,
                 fromMe: Boolean(msg.key?.fromMe),
               },
             },

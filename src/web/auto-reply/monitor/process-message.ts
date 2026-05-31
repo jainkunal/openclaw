@@ -317,7 +317,9 @@ export async function processMessage(params: {
     ConversationLabel: params.msg.chatType === "group" ? conversationId : params.msg.from,
     GroupSubject: params.msg.groupSubject,
     GroupMembers: formatGroupMembers({
-      participants: params.msg.groupParticipants,
+      participants: params.msg.groupParticipants
+        ?.map((p) => p.e164)
+        .filter((e): e is string => Boolean(e)),
       roster: params.groupMemberNames.get(params.groupHistoryKey),
       fallbackE164: params.msg.senderE164,
     }),
