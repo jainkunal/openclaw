@@ -105,9 +105,9 @@ export function createWebSendApi(params: {
         },
       } as AnyMessageContent);
     },
-    sendComposingTo: async (to: string): Promise<void> => {
-      const jid = toWhatsappJid(to);
-      await params.sock.sendPresenceUpdate("composing", jid);
+    sendComposingTo: async (_to: string): Promise<void> => {
+      // const jid = toWhatsappJid(to);
+      // await params.sock.sendPresenceUpdate("composing", jid);
     },
   } as const;
 }

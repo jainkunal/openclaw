@@ -428,11 +428,11 @@ export async function monitorWebInbox(options: {
   ) => {
     const chatJid = inbound.remoteJid;
     const sendComposing = async () => {
-      try {
-        await sock.sendPresenceUpdate("composing", chatJid);
-      } catch (err) {
-        logVerbose(`Presence update failed: ${String(err)}`);
-      }
+      // try {
+      //   await sock.sendPresenceUpdate("composing", chatJid);
+      // } catch (err) {
+      //   logVerbose(`Presence update failed: ${String(err)}`);
+      // }
     };
     const reply = async (text: string) => {
       await sock.sendMessage(chatJid, { text });
